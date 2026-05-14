@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRY AGAIN - World's Difficult Game</title>
+  
+  <!-- New Military Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #111;
+      font-family: 'Black Ops One', 'Arial', sans-serif;
+      text-align: center;
+      color: white;
+    }
+    canvas {
+      border: 4px solid #333;
+      margin-top: 10px;
+      image-rendering: pixelated;
+    }
+    #score, #level {
+      position: absolute;
+      color: white;
+      font-size: 26px;
+      font-weight: bold;
+      text-shadow: 3px 3px 6px black;
+      z-index: 10;
+      font-family: 'Black Ops One', sans-serif;
+    }
+    #score { top: 15px; left: 20px; }
+    #level { top: 15px; right: 20px; }
+
+    .btn {
+      padding: 14px 28px;
+      margin: 8px;
+      font-size: 22px;
+      font-weight: bold;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      transition: all 0.2s;
+      font-family: 'Black Ops One', sans-serif;
+    }
+    #startBtn { background: linear-gradient(#00cc00, #008800); }
+    #restartBtn, #homeBtn { background: linear-gradient(#ff4444, #cc0000); }
+    .btn:hover { transform: scale(1.1); }
+
+    .controls { margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div id="score">SCORE: 0</div>
+  <div id="level">LEVEL 1</div>
+  <canvas id="canvas" width="800" height="500"></canvas>
+  
+  <div class="controls">
+    <button id="startBtn" class="btn">START MISSION</button>
+    <button id="restartBtn" class="btn">RESTART MISSION</button>
+    <button id="homeBtn" class="btn">BACK TO BASE</button>
+  </div>
+
+  <script>
+    // ... (Pura script same rahega jo last time diya tha)
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
+
+    const startBtn = document.getElementById("startBtn");
+    const restartBtn = document.getElementById("restartBtn");
+    const homeBtn = document.getElementById("homeBtn");
+
+    let gameState = "title";
+    let score = 0;
+    let level = 1;
+    let gravity = 0.52;
+    let velocity = 0;
+    let frameCount = 0;
+    let obstacleSpeed = 3;
+    let gapSize = 160;
+
+    const jet = {
+      x: 150,
+      y: 200,
+      width: 55,
+      height: 38,
+      draw: function() {
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+
+        ctx.fillStyle = "#2C3E50";
+        ctx.beginPath();
+        ctx.moveTo(0, -this.height/2);
+        ctx.lineTo(this.width/2, this.height/2);
+        ctx.lineTo(-this.width/2, this.height/2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#34495E";
+        ctx.beginPath();
+        ctx.moveTo(-this.width/2 + 5, 0);
+        ctx.lineTo(this.width/2 - 5, 0);
+        ctx.lineTo(0, this.height/2 - 5);
+        ctx.fill();
+
+        ctx.fillStyle = "#E74C3C";
+        ctx.beginPath();
+        ctx.ellipse(5, -8, 12, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (velocity > 1) {
+          const flame = 12 + Math.random() * 12;
+          ctx.fillStyle = "#FF9800";
+          ctx.beginPath();
+          ctx.moveTo(-8, this.height/2 - 4);
+          ctx.lineTo(0, this.height/2 + flame);
+          ctx.lineTo(8, this.height/2 - 4);
+          ctx.fill();
+
+          ctx.fillStyle = "#FF5722";
+          ctx.beginPath();
+          ctx.moveTo(-5, this.height/2 - 2);
+          ctx.lineTo(0, this.height/2 + flame + 8);
+          ctx.lineTo(5, this.height/2 - 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    };
+
+    let obstacles = [];
+
+    function createObstacle() {
+      const minH = 70;
+      const maxH = canvas.height - gapSize - 90;
+      const h = Math.random() * (maxH - minH) + minH;
+
+      obstacles.push({ x: canvas.width, topHeight: h, passed: false });
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#5D4037";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#2E7D32";
+      for (let i = 0; i < 25; i++) {
+        const x = (i * 47 + frameCount * 0.6) % (canvas.width + 100) - 50;
+        ctx.fillRect(x, 80 + (i % 7) * 55, 70, 35);
+      }
+
+      ctx.strokeStyle = "#BEBEBE";
+      ctx.lineWidth = 12;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 100 + i * 70);
+        ctx.lineTo(canvas.width, 130 + i * 65);
+        ctx.stroke();
+      }
+    }
+
+    function drawObstacles() {
+      for (let obs of obstacles) {
+        ctx.fillStyle = "#1B5E20";
+        ctx.fillRect(obs.x, 0, 60, obs.topHeight);
+        ctx.fillRect(obs.x, obs.topHeight + gapSize, 60, canvas.height);
+
+        ctx.fillStyle = "#FFD700";
+        for (let i = 0; i < obs.topHeight; i += 35) ctx.fillRect(obs.x + 10, i, 40, 12);
+        for (let i = obs.topHeight + gapSize; i < canvas.height; i += 35) ctx.fillRect(obs.x + 10, i, 40, 12);
+      }
+    }
+
+    function drawTitleScreen() {
+      ctx.fillStyle = "rgba(0,0,0,0.88)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#FF0000";
+      ctx.font = "bold 78px 'Black Ops One'";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "#FF0000";
+      ctx.shadowBlur = 35;
+      ctx.fillText("TRY AGAIN", canvas.width/2, 165);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#FFD700";
+      ctx.font = "bold 26px 'Black Ops One'";
+      ctx.fillText("WORLD'S MOST DIFFICULT GAME EVER", canvas.width/2, 225);
+
+      ctx.save();
+      ctx.translate(canvas.width/2 - 30, 275);
+      ctx.scale(1.5, 1.5);
+      jet.draw();
+      ctx.restore();
+
+      ctx.fillStyle = "#00FF00";
+      ctx.font = "bold 32px 'Black Ops One'";
+      ctx.fillText("CLICK OR PRESS SPACE TO START", canvas.width/2, 390);
+    }
+
+    function drawLevelUpScreen() {
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#00FF00";
+      ctx.font = "bold 58px 'Black Ops One'";
+      ctx.textAlign = "center";
+      ctx.shadowColor = "#00FF00";
+      ctx.shadowBlur = 25;
+      ctx.fillText(`LEVEL ${level} COMPLETE`, canvas.width/2, 200);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "white";
+      ctx.font = "bold 28px 'Black Ops One'";
+      ctx.fillText(`SCORE: ${score}`, canvas.width/2, 255);
+
+      ctx.fillStyle = "#FFD700";
+      ctx.font = "bold 30px 'Black Ops One'";
+      ctx.fillText("PREPARE FOR NEXT MISSION", canvas.width/2, 310);
+
+      ctx.fillStyle = "#00FF00";
+      ctx.font = "bold 26px 'Black Ops One'";
+      ctx.fillText("CLICK OR PRESS SPACE TO CONTINUE", canvas.width/2, 370);
+    }
+
+    function drawGameOverScreen() {
+      ctx.fillStyle = "rgba(0,0,0,0.82)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#FF0000";
+      ctx.font = "bold 68px 'Black Ops One'";
+      ctx.fillText("MISSION FAILED", canvas.width/2, 180);
+
+      ctx.fillStyle = "white";
+      ctx.font = "bold 30px 'Black Ops One'";
+      ctx.fillText(`FINAL SCORE: ${score} | LEVEL ${level}`, canvas.width/2, 245);
+    }
+
+    // Rest of the code (updateGame, gameLoop, controls etc.) same rahega
+    function updateLevel() {
+      const newLevel = Math.floor(score / 5) + 1;
+      if (newLevel > level) {
+        level = newLevel;
+        levelEl.textContent = `LEVEL ${level}`;
+        gapSize = Math.max(125, 160 - (level - 1) * 9);
+        obstacleSpeed = 3 + (level - 1) * 0.45;
+        gameState = "levelup";
+      }
+    }
+
+    function updateGame() {
+      if (gameState !== "playing") return;
+
+      velocity += gravity;
+      jet.y += velocity;
+
+      if (jet.y + jet.height > canvas.height || jet.y < 0) gameState = "gameover";
+
+      for (let i = 0; i < obstacles.length; i++) {
+        const obs = obstacles[i];
+        obs.x -= obstacleSpeed;
+
+        if (!obs.passed && obs.x + 60 < jet.x) {
+          obs.passed = true;
+          score++;
+          scoreEl.textContent = `SCORE: ${score}`;
+          updateLevel();
+        }
+
+        if (jet.x + jet.width > obs.x && jet.x < obs.x + 60 &&
+          (jet.y < obs.topHeight || jet.y + jet.height > obs.topHeight + gapSize)) {
+          gameState = "gameover";
+        }
+
+        if (obs.x + 60 < 0) {
+          obstacles.splice(i, 1);
+          i--;
+        }
+      }
+
+      frameCount++;
+      if (frameCount % Math.max(60, 85 - level * 5) === 0) createObstacle();
+    }
+
+    function gameLoop() {
+      drawBackground();
+
+      if (gameState === "title") {
+        drawTitleScreen();
+        startBtn.style.display = "inline-block";
+        restartBtn.style.display = "none";
+        homeBtn.style.display = "none";
+      } 
+      else if (gameState === "playing") {
+        drawObstacles();
+        jet.draw();
+        updateGame();
+        startBtn.style.display = "none";
+        restartBtn.style.display = "none";
+        homeBtn.style.display = "none";
+      } 
+      else if (gameState === "levelup") {
+        drawObstacles();
+        jet.draw();
+        drawLevelUpScreen();
+      } 
+      else if (gameState === "gameover") {
+        drawObstacles();
+        jet.draw();
+        drawGameOverScreen();
+        restartBtn.style.display = "inline-block";
+        homeBtn.style.display = "inline-block";
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function resetGame() {
+      jet.y = 200; velocity = 0; obstacles = [];
+      score = 0; level = 1; gapSize = 160; obstacleSpeed = 3;
+      scoreEl.textContent = "SCORE: 0";
+      levelEl.textContent = "LEVEL 1";
+      frameCount = 0;
+    }
+
+    function startGame() {
+      resetGame();
+      gameState = "playing";
+      createObstacle();
+    }
+
+    function goToTitle() {
+      gameState = "title";
+      resetGame();
+    }
+
+    startBtn.addEventListener("click", startGame);
+    restartBtn.addEventListener("click", startGame);
+    homeBtn.addEventListener("click", goToTitle);
+
+    function flap() {
+      if (gameState === "playing") velocity = -11;
+      if (gameState === "levelup") startGame();
+    }
+
+    canvas.addEventListener("click", () => {
+      if (gameState === "title" || gameState === "gameover") startGame();
+      else if (gameState === "levelup") flap();
+      else flap();
+    });
+
+    document.addEventListener("keydown", e => {
+      if ((e.key === " " || e.key === "Enter") && (gameState === "title" || gameState === "gameover")) startGame();
+      if (e.key === "ArrowUp" || e.key === " ") flap();
+    });
+
+    canvas.addEventListener("touchstart", e => {
+      e.preventDefault();
+      if (gameState === "title" || gameState === "gameover") startGame();
+      else if (gameState === "levelup") flap();
+      else flap();
+    });
+
+    gameLoop();
+  </script>
+</body>
+</html>
